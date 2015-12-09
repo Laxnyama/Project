@@ -1,0 +1,276 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Dec  8 23:15:57 2015
+
+@author: computing
+"""
+import datetime
+import cPickle
+import pickle
+import sys
+from pyQt4 import QtGui, QtCore
+
+class Window(QtGui.QMainWindow):
+    
+    def _init_(self):
+        super(Window, self)._init_()
+        self.setGeometry(50, 50, 500, 300)
+        self.setWindowTitle("Linda!")
+        self.setWindowIcon(QtGui.QIcon('pythonlogo.png'))
+        
+        # toolbar
+        extractAction = QtGui.QAction("Wait a minute", self)
+        extractAction.setShortcut("Ctrl+Q")
+        extractAction.setStatusTip('Leave The App')
+        extractAction.triggered.connect(self.close_application)
+        
+        # status bar
+        self.statusBar()
+        
+        # file menu
+        mainMenu = self.menuBar()
+        fileMenu = mainMenu.addMenu('&File')
+        fileMenu.addActoin(extractAction)
+        
+        # edit menu
+        mainMenu = self.menuBar()
+        fileMenu = mainMenu.addMenu('&Edit')
+        fileMenu.addActoin(extractAction)
+        
+        extractAction.trippered.connect(self.close_application)
+        extractAction = QtGui.QtAction(QtGui.QIcon('edges.png'), 'edit edges', self)
+        self.toolbar = self.addToolBar("Edges")
+        self.toolBar.addAction(extractAction)
+        
+        self.home()
+        
+        
+
+        
+    def home(self):
+        # close application
+        Btn = QtGui.QPushButton("Quit", self)
+        Btn.clicked.connect(self.close_application)
+        Btn.resize(100, 50)
+        Btn.move(100, 100)
+        
+        # progress bar widget
+        self.progress = QtGui.QProgressbar(self)
+        self.progress.setGeometry(200, 80, 250, 20)
+        # button to run widget
+        self.btn = QtGui.QPushButton("Download", self)
+        self.btn.move(200, 300)
+        self.btn.clicked.connect(self.download)
+        
+        
+## DRAG AND DROP FEATURES 
+        # A custom data structure for person
+class person(object):
+    def __init__(self, name, dob, house_no):
+        self.name = name
+        self.dob = dob
+        self.addr = "%d Rue de la Soleil"% house_no
+    def __repr__(self):
+        return "%s\n%s\n%s"% (self.name, self.dob, self.addr)
+        
+        
+        # objects for dragable list
+class simple_model(QtCore.QAbstractListModel):
+    def __init__(self, parent=None):
+        super(simple_model, self).__init__(parent)
+        self.list = []
+        for name, dob, house_no in (
+        ("Neil", datetime.date(1969,12,9), 23),
+        ("John", datetime.date(1952,5,3), 2543),
+        ("Ilona", datetime.date(1975,4,6), 1)):
+            self.list.append(person(name, dob, house_no))
+        self.setSupportedDragActions(QtCore.Qt.MoveAction)
+
+    def rowCount(self, parent=QtCore.QModelIndex()):
+        return len(self.list)
+
+    def data(self, index, role):
+        if role == QtCore.Qt.DisplayRole: #show just the name
+            person = self.list[index.row()]
+            return QtCore.QVariant(person.name)
+        #return the whole python object    
+        elif role == QtCore.Qt.UserRole:  
+            person = self.list[index.row()]
+            return person
+        return QtCore.QVariant()
+        
+        # remove selected row
+    def removeRow(self, position):
+        self.list = self.list[:position] + self.list[position+1:]
+        self.reset()
+        
+        
+
+
+
+
+        # drag and drop features
+        # Drop area
+class dropZone(QtGui.QLabel):
+    def __init__(self, parent=None):
+        super(dropZone, self).__init__(parent)
+        self.setMinimumSize(200,200)
+        self.set_bg()
+        self.setText("Drop Here")
+        self.setAlignment(QtCore.Qt.AlignCenter)
+        self.setAcceptDrops(True)
+        
+    # 
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasFormat("application/x-person"):
+            self.set_bg(True)
+            event.accept()
+        else:
+            event.ignore()
+            
+    # move the drag event  
+    def dragMoveEvent(self, event):
+        if event.mimeData().hasFormat("application/x-person"):
+            event.setDropAction(QtCore.Qt.MoveAction)
+            event.accept()
+        else:
+            event.ignore()
+
+    # set bg when dragging the event   
+    def dragLeaveEvent(self, event):
+        self.set_bg()
+        
+    # drop the event into the drop zone  
+    def dropEvent(self, event):
+        data = event.mimeData()
+        bstream = data.retrieveData("application/x-person",
+            QtCore.QVariant.ByteArray)
+        selected = pickle.loads(bstream.toByteArray())
+        self.setText(str(selected))
+        self.set_bg()
+        event.accept()
+        
+    #  set bg yellow or green depending on the current state of drop zone 
+    def set_bg(self, active=False):
+        if active:
+            val = "background:yellow;"
+        else:
+            val = "background:green;"
+        self.setStyleSheet(val)
+        
+        
+
+
+class draggableList(QtGui.QListView):
+    '''
+    a listView whose items can be moved
+    '''
+    def ___init__(self, parent=None):
+        super(draggableList, self).__init__(parent)
+        self.setDragEnabled(True)
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasFormat("application/x-person"):
+            event.setDropAction(QtCore.Qt.QMoveAction)
+            event.accept()
+        else:
+            event.ignore()
+
+    def startDrag(self, event):
+        index = self.indexAt(event.pos())
+        if not index.isValid():
+            return
+
+        ## selected is the relevant person object
+        selected = self.model().data(index,QtCore.Qt.UserRole)
+
+        ## convert to  a bytestream
+        bstream = cPickle.dumps(selected)
+        mimeData = QtCore.QMimeData()
+        mimeData.setData("application/x-person", bstream)
+
+        drag = QtGui.QDrag(self)
+        drag.setMimeData(mimeData)
+
+        # example 1 - the object itself
+
+        pixmap = QtGui.QPixmap()
+        pixmap = pixmap.grabWidget(self, self.rectForIndex(index))
+
+        # example 2 -  a plain pixmap
+        #pixmap = QtGui.QPixmap(100, self.height()/2)
+        #pixmap.fill(QtGui.QColor("orange"))
+        drag.setPixmap(pixmap)
+
+        drag.setHotSpot(QtCore.QPoint(pixmap.width()/2, pixmap.height()/2))
+        drag.setPixmap(pixmap)
+        result = drag.start(QtCore.Qt.MoveAction)
+        if result: # == QtCore.Qt.MoveAction:
+            self.model().removeRow(index.row())
+
+    def mouseMoveEvent(self, event):
+        self.startDrag(event)
+        
+        
+        
+        
+
+class testDialog(QtGui.QDialog):
+    def __init__(self, parent=None):
+        super(testDialog, self).__init__(parent)
+        self.setWindowTitle("Drag Drop Test")
+        layout = QtGui.QGridLayout(self)
+
+        label = QtGui.QLabel("Drag Name From This List")
+
+        self.model = simple_model()
+        self.listView = draggableList()
+        self.listView.setModel(self.model)
+        self.dz = dropZone()
+
+        layout.addWidget(label,0,0)
+        layout.addWidget(self.listView,1,0)
+        layout.addWidget(self.dz,0,1,2,2)
+
+    
+        self.show()
+        
+        
+        
+        
+        # download method
+        def download(self):
+		self.completed = 0
+		while self.completed < 100:
+				self.completed += 0.0001
+				self.progress.setValue(self.completed)
+
+        # enalrge window method(use check box)
+        def enlarge_window(self, state):
+		if state == QtCore.Qt.Checked:
+                  self.setGeometry(50, 50, 100, 600)
+		else: self.setGeometry(50, 50, 500, 300)
+  
+        #
+        def close_application(self):
+         choice = QtGui.QMessageBox.question(self, 'Quitting', "sure you want to close application?", QtGui.QMessageBox.Yes| QtGui.QMessageBox.No)
+         if choice == QtGui.QtMessageBox.yes:
+             sys.exit()
+         else:
+             pass
+         
+            
+
+if __name__ == "__main__":
+    '''
+    the try catch here is to ensure that the app exits cleanly no matter what
+    makes life better for SPE
+    '''
+    try:
+        app = QtGui.QApplication([])
+        dl = testDialog()
+        dl.exec_()
+    except Exception, e:  #could use as e for python 2.6...
+        print e
+    sys.exit(app.closeAllWindows())
+        
